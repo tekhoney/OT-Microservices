@@ -1,15 +1,9 @@
 pipeline {
     agent any
     
-    environment {
-        // Explicitly defining the Java home path to avoid terminal environment mismatch
-        JAVA_HOME = '/usr/lib/jvm/java-21-openjdk' // Standard path, adjust if your machine uses a different directory
-        PATH      = "${env.JAVA_HOME}/bin:${env.PATH}"
-    }
-    
     tools {
         maven '3.8.7' 
-        jdk 'Java 21' 
+        jdk 'Java 21' // Must match the name exactly as defined in Manage Jenkins -> Tools
     }
 
     stages {
@@ -21,9 +15,11 @@ pipeline {
 
         stage('Compile') {
             steps {
-                // Navigate into your sub-repository directory before running Maven
                 dir('salary') {
-                    sh 'mvn clean compile'
+                    // This block dynamically injects the tools paths directly into the terminal environment variables
+                    withEnv(["JAVA_HOME=${tool 'Java 21'}", "PATH+MAVEN=${tool '3.8.7'}/bin"]) {
+                        sh 'mvn clean compile'
+                    }
                 }
             }
         }
@@ -34,7 +30,9 @@ pipeline {
                     steps {
                         dir('salary') {
                             catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                                sh 'mvn test'
+                                withEnv(["JAVA_HOME=${tool 'Java 21'}", "PATH+MAVEN=${tool '3.8.7'}/bin"]) {
+                                    sh 'mvn test'
+                                }
                             }
                         }
                     }
@@ -43,7 +41,9 @@ pipeline {
                     steps {
                         dir('salary') {
                             catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                                sh 'mvn verify -DskipUTs=true'
+                                withEnv(["JAVA_HOME=${tool 'Java 21'}", "PATH+MAVEN=${tool '3.8.7'}/bin"]) {
+                                    sh 'mvn verify -DskipUTs=true'
+                                }
                             }
                         }
                     }
@@ -55,8 +55,10 @@ pipeline {
             steps {
                 dir('salary') {
                     catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                        echo "Generating PDF test reports..."
-                        sh 'mvn pdf:pdf' 
+                        withEnv(["JAVA_HOME=${tool 'Java 21'}", "PATH+MAVEN=${tool '3.8.7'}/bin"]) {
+                            echo "Generating PDF test reports..."
+                            sh 'mvn pdf:pdf' 
+                        }
                     }
                 }
             }
@@ -65,14 +67,16 @@ pipeline {
 
     post {
         always {
-            // Updated paths to look inside the 'salary' directory for reports
+            // 1. Publish test results via JUnit Publisher
             junit allowEmptyResults: true, testResults: 'salary/target/surefire-reports/*.xml,salary/target/failsafe-reports/*.xml'
             
+            // 2. Publish JaCoCo coverage using the modern Coverage Plugin
             recordCoverage(
                 tools: [[parser: 'JACOCO', pattern: 'salary/target/site/jacoco/jacoco.xml']],
                 sourceCodeRetention: 'EVERY_BUILD'
             )
             
+            // 3. Archive test artifacts (XML reports, HTML reports, and generated PDFs)
             archiveArtifacts artifacts: 'salary/target/*.pdf, salary/target/site/jacoco/**', allowEmptyArchive: true
         }
         failure {
