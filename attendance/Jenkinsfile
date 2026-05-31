@@ -41,8 +41,7 @@ pipeline {
                         deployer.validate()
                         deployer.deploy()
                         
-                        // SIMULATED ERROR FOR ASSIGNMENT VERIFICATION
-                        error "Simulated Deployment Timeout"
+                        
                         
                     } catch (Exception e) {
                         echo "⚠️ Deployment Intercepted an Error: ${e.message}"
