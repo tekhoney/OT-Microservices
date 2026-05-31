@@ -89,7 +89,7 @@ pipeline {
                         <p><b>Target Deployment:</b> ${params.DEPLOY_ENV.toUpperCase()}</p>
                         <p><b>Duration:</b> ${currentBuild.durationString}</p>
                         <p><b>Console Link:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                        <p><i>Status: All deployment routines and validations passed seamlessly. The full execution log has been attached.</i></p>
+                        <p><i>Status: All deployment routines passed seamlessly.</i></p>
                     """
                     
                     emailext body: successEmailBody, 
@@ -98,7 +98,8 @@ pipeline {
                              to: 'itkrishan21@gmail.com',
                              from: 'itkrishan21@gmail.com',
                              replyTo: 'itkrishan21@gmail.com',
-                             attachLog: true // ◄ Attaches the full console log text file
+                             attachLog: true,
+                             recipientProviders: [[$class: 'DevelopersRecipientProvider'], [$class: 'RequesterRecipientProvider']]
                              
                 } catch (Exception notifyError) {
                     echo "⚠️ Success Notification Engine Intercepted an Error: ${notifyError.message}"
@@ -120,12 +121,12 @@ pipeline {
                         <p><b>Target Deployment:</b> ${params.DEPLOY_ENV.toUpperCase()}</p>
                         <p><b>Duration:</b> ${currentBuild.durationString}</p>
                         <p><b>Console Logs Link:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                        <p><i>Note: Active container rollback actions were executed automatically. Check the attached full console log file for details.</i></p>
+                        <p><i>Note: Active container rollback actions were executed automatically.</i></p>
                     """
                     
                     slackSend channel: '#jenkins-alerts', 
                               color: 'danger', 
-                              message: "🚨 CRITICAL FAILURE: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}] failed!\n• *Branch:* ${runBranch}\n• *Duration:* ${currentBuild.durationString}\n• *Action:* Active automated container rollback executed."
+                              message: "🚨 CRITICAL FAILURE: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}] failed!\n• *Branch:* ${runBranch}\n• *Duration:* ${currentBuild.durationString}"
                     
                     emailext body: failureEmailBody, 
                              mimeType: 'text/html', 
@@ -133,10 +134,11 @@ pipeline {
                              to: 'itkrishan21@gmail.com',
                              from: 'itkrishan21@gmail.com',
                              replyTo: 'itkrishan21@gmail.com',
-                             attachLog: true // ◄ Attaches the full console log text file
+                             attachLog: true,
+                             recipientProviders: [[$class: 'DevelopersRecipientProvider'], [$class: 'RequesterRecipientProvider']]
                              
                 } catch (Exception notifyError) {
-                    echo "⚠️ Failure Notification System Encountered an Error: ${notifyError.message}. Moving forward gracefully."
+                    echo "⚠️ Failure Notification System Encountered an Error: ${notifyError.message}"
                 }
             }
         }
