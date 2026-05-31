@@ -38,10 +38,8 @@ pipeline {
                     try {
                         deployer.validate()
                         deployer.deploy()
-                        
-                        // FORCE FAILURE TO RUN DEBUG POST BLOCK ACTIONS
+                        // Keep this commented out during final submission to show a successful run!
                         error "Simulated Deployment Timeout"
-                        
                     } catch (Exception e) {
                         echo "⚠️ Deployment Intercepted an Error: ${e.message}"
                         currentBuild.result = 'FAILURE'
@@ -62,67 +60,89 @@ pipeline {
         
         success {
             script {
-                echo "✅ Processing Success State Actions."
+                try {
+                    def runBranch = env.BRANCH_NAME ?: 'master'
+                    
+                    // Slack Alert
+                    slackSend channel: '#jenkins-alerts', 
+                              color: 'good', 
+                              message: "✅ SUCCESSFUL: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}]\n• *Branch:* ${runBranch}\n• *Duration:* ${currentBuild.durationString}\n• *Environment:* ${params.DEPLOY_ENV.toUpperCase()}"
+                    
+                    // Custom HTML Body Configuration
+                    String successEmailBody = """
+                        ✅ Jenkins Deployment Successful Notification
+                        --------------------------------------------------
+                        Job: ${env.JOB_NAME}
+                        Build Number: #${env.BUILD_NUMBER}
+                        Branch: ${runBranch}
+                        Target Deployment: ${params.DEPLOY_ENV.toUpperCase()}
+                        Duration: ${currentBuild.durationString}
+                        Console Link: ${env.BUILD_URL}console
+                        
+                        Status: All deployment routines and validations passed seamlessly.
+                    """
+                    
+                    // Route through the working Native Mail engine
+                    mail body: successEmailBody,
+                         mimeType: 'text/plain',
+                         subject: "DEPL_SUCCESS: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER} OK",
+                         to: 'itkrishan21@gmail.com'
+                             
+                } catch (Exception notifyError) {
+                    echo "⚠️ Success Notification Engine Intercepted an Error: ${notifyError.message}"
+                }
             }
         }
 
         failure {
             script {
-                echo "🚨 DEBUG ENGINE STARTING: Initiating dual-routing email diagnostics..."
-                
-                // -------------------------------------------------------------
-                // DIAGNOSTIC ROUTE A: EXTENDED EMAIL PLUGIN
-                // -------------------------------------------------------------
                 try {
-                    echo "📨 Attempting Diagnostic Route A (emailext)..."
-                    String failureEmailBody = "<h3>❌ Jenkins Build #${env.BUILD_NUMBER} Failure</h3>"
+                    def runBranch = env.BRANCH_NAME ?: 'master'
+                    echo "🚨 CRITICAL: Build #${BUILD_NUMBER} Failed. Processing native data alerts..."
                     
-                    emailext body: failureEmailBody, 
-                             mimeType: 'text/html', 
-                             subject: "DEPL_ALERT: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER} FAILURE", 
-                             to: 'itkrishan21@gmail.com',
-                             from: 'itkrishan21@gmail.com',
-                             replyTo: 'itkrishan21@gmail.com',
-                             attachLog: true,
-                             recipientProviders: [[$class: 'DevelopersRecipientProvider'], [$class: 'RequesterRecipientProvider']]
-                             
-                    echo "✔️ Diagnostic Route A (emailext) completed successfully without script exceptions."
-                } catch (Exception notifyError) {
-                    echo "❌ Diagnostic Route A CRASHED with error: ${notifyError.message}"
-                }
-                
-                // -------------------------------------------------------------
-                // DIAGNOSTIC ROUTE B: NATIVE JENKINS BASIC MAIL (Bypasses Extended Plugin Settings)
-                // -------------------------------------------------------------
-                try {
-                    echo "📨 Attempting Diagnostic Route B (Native basic mail)..."
-                    
-                    mail body: "Your Jenkins job ${env.JOB_NAME} Build #${env.BUILD_NUMBER} failed. Access the pipeline interface to review terminal stacktraces.",
-                         subject: "ALERT: Jenkins Build #${env.BUILD_NUMBER} Failed (Native Step)",
-                         to: 'itkrishan21@gmail.com'
-                         
-                    echo "✔️ Diagnostic Route B (Native basic mail) executed successfully."
-                } catch (Exception nativeError) {
-                    echo "❌ Diagnostic Route B CRASHED with error: ${nativeError.message}"
-                }
-
-                // -------------------------------------------------------------
-                // SLACK DISPATCH ROUTINE
-                // -------------------------------------------------------------
-                try {
+                    // Slack Alert
                     slackSend channel: '#jenkins-alerts', 
                               color: 'danger', 
-                              message: "🚨 CRITICAL FAILURE: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}] failed!"
-                } catch (Exception slackError) {
-                    echo "❌ Slack step crashed with error: ${slackError.message}"
+                              message: "🚨 CRITICAL FAILURE: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}] failed!\n• *Branch:* ${runBranch}\n• *Duration:* ${currentBuild.durationString}"
+                    
+                    // Extract the final 50 log lines dynamically to satisfy the assignment requirement
+                    def logLines = ""
+                    try {
+                        logLines = currentBuild.rawBuild.getLog(50).join("\n")
+                    } catch (Exception logError) {
+                        logLines = "Unable to fetch log stream: ${logError.message}"
+                    }
+                    
+                    // Combine metrics, details, and logs into a single structured body layout
+                    String failureEmailBody = """
+                    ❌ Jenkins Build Deployment Failure Notification
+                    --------------------------------------------------
+                    Job: ${env.JOB_NAME}
+                    Build Number: #${env.BUILD_NUMBER}
+                    Branch: ${runBranch}
+                    Target Deployment: ${params.DEPLOY_ENV.toUpperCase()}
+                    Duration: ${currentBuild.durationString}
+                    Console Link: ${env.BUILD_URL}console
+                    
+                    📋 RECENT CONSOLE LOG OUTPUT:
+                    ==================================================
+                    ${logLines}
+                    ==================================================
+                    
+                    Note: Active container rollback actions were executed automatically.
+                    """
+                    
+                    // Fire using the validated working Native Mail engine
+                    mail body: failureEmailBody,
+                         mimeType: 'text/plain',
+                         subject: "DEPL_ALERT: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER} FAILURE",
+                         to: 'itkrishan21@gmail.com'
+                         
+                    echo "📨 Native failure notification dispatched to inbox."
+                             
+                } catch (Exception notifyError) {
+                    echo "⚠️ Failure Notification System Encountered an Error: ${notifyError.message}"
                 }
-            }
-        }
-
-        unstable {
-            script {
-                echo "⚠️ Build marked as Unstable."
             }
         }
     }
-}
