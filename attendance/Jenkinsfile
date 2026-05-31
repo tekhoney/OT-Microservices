@@ -1,0 +1,111 @@
+@Library('my-shared-library') _
+
+import org.company.DeploymentManager
+
+pipeline {
+    agent any
+    
+    parameters {
+        choice(name: 'DEPLOY_ENV', choices: ['dev', 'staging', 'prod'], description: 'Select target environment')
+    }
+
+    options {
+        timeout(time: 1, unit: 'HOURS')
+        ansiColor('xterm')
+    }
+
+    stages {
+        stage('Initialize & Notify') {
+            steps {
+                script {
+                    // Send an initial notification to tracking systems
+                    echo "🔔 Notification: Build #${BUILD_NUMBER} Started for branch ${BRANCH_NAME ?: 'master'}"
+                    // Slack call placeholder: slackSend(channel: '#deployments', color: '#FFFF00', message: "STARTED: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}]")
+                }
+            }
+        }
+
+        stage('Checkout & Build') {
+            steps {
+                git url: 'https://github.com/tekhoney/OT-Microservices.git', branch: 'master'
+                echo "Building Attendance Microservice Image..."
+            }
+        }
+        
+        stage('Execute Core Deployment Actions') {
+            steps {
+                script {
+                    def deployer = new DeploymentManager(this, params.DEPLOY_ENV)
+                    
+                    try {
+                        deployer.validate()
+                        deployer.deploy()
+                        
+                        // SIMULATED ERROR FOR ASSIGNMENT VERIFICATION
+                        error "Simulated Deployment Timeout"
+                        
+                    } catch (Exception e) {
+                        echo "⚠️ Deployment Intercepted an Error: ${e.message}"
+                        currentBuild.result = 'FAILURE'
+                        
+                        // Execute your active container recovery logic
+                        deployer.rollback()
+                    }
+                }
+            }
+        }
+    }
+
+    // ASSIGNMENT 02 - DECLARATIVE POST BLOCKS WITH NOTIFICATION LOGIC
+    post {
+        always {
+            echo "📊 Build Finished. Duration: ${currentBuild.durationString}. Status: ${currentBuild.currentResult}"
+        }
+        
+        success {
+            script {
+                // Conditional notification based on branch execution using programmatic when statements
+                if (env.BRANCH_NAME == 'master' || env.BRANCH_NAME == null) {
+                    echo "✅ Slack/Email Notification sent to #prod-release channel: Build Success!"
+                    /* slackSend channel: '#deployments', color: 'good', 
+                              message: "SUCCESSFUL: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}]\nDuration: ${currentBuild.durationString}\nArtifact: ${params.DEPLOY_ENV}"
+                    */
+                }
+            }
+        }
+
+        failure {
+            script {
+                // Handle notification actions gracefully using a secondary try block to avoid failing the pipeline if email server is down
+                try {
+                    echo "🚨 CRITICAL: Build #${BUILD_NUMBER} Failed. Initiating Email template generation..."
+                    
+                    String emailBody = """
+                        <h3>❌ Jenkins Build Deployment Failure Notification</h3>
+                        <p><b>Job:</b> ${env.JOB_NAME}</p>
+                        <p><b>Build Number:</b> #${env.BUILD_NUMBER}</p>
+                        <p><b>Target Deployment:</b> ${params.DEPLOY_ENV.toUpperCase()}</p>
+                        <p><b>Duration:</b> ${currentBuild.durationString}</p>
+                        <p><b>Console Logs Link:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                        <p><i>Note: Active container rollback actions were executed automatically. Check host container status.</i></p>
+                    """
+                    
+                    echo "Sending email to opstree dev-ops distribution lists..."
+                    /*
+                    emailext body: emailBody, 
+                            mimeType: 'text/html', 
+                            subject: "DEPL_ALERT: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER} FAILURE", 
+                            to: 'devops-alerts@company.com'
+                    */
+                } catch (Exception notifyError) {
+                    echo "⚠️ Notification System Encountered an Error: ${notifyError.message}. Moving forward gracefully."
+                }
+            }
+        }
+
+        unstable {
+            echo "⚠️ Pipeline marked as UNSTABLE. Verifying test suite results..."
+            // Placeholder: slackSend(channel: '#alerts', color: 'warning', message: "UNSTABLE: ${env.JOB_NAME}")
+        }
+    }
+}
