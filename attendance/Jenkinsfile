@@ -38,7 +38,7 @@ pipeline {
                     try {
                         deployer.validate()
                         deployer.deploy()
-                        // Keep this commented out during final submission to show a successful run!
+                        // FORCE A FAILURE HERE TO TEST THE ACTIVE RECREATE ROLLBACK
                         error "Simulated Deployment Timeout"
                     } catch (Exception e) {
                         echo "⚠️ Deployment Intercepted an Error: ${e.message}"
@@ -55,6 +55,19 @@ pipeline {
         always {
             script {
                 echo "📊 Build Finished. Duration: ${currentBuild.durationString}. Status: ${currentBuild.currentResult}"
+                
+                def changeLogSets = currentBuild.changeSets
+                if (changeLogSets.size() > 0) {
+                    echo "📋 Build Changes Detected:"
+                    for (int i = 0; i < changeLogSets.size(); i++) {
+                        def entries = changeLogSets[i].items
+                        for (int j = 0; j < entries.length; j++) {
+                            echo "- ${entries[j].msg} by ${entries[j].author.fullName}"
+                        }
+                    }
+                } else {
+                    echo "📋 No new changes detected in this build execution."
+                }
             }
         }
         
@@ -63,28 +76,27 @@ pipeline {
                 try {
                     def runBranch = env.BRANCH_NAME ?: 'master'
                     
-                    // Slack Alert
                     slackSend channel: '#jenkins-alerts', 
                               color: 'good', 
                               message: "✅ SUCCESSFUL: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}]\n• *Branch:* ${runBranch}\n• *Duration:* ${currentBuild.durationString}\n• *Environment:* ${params.DEPLOY_ENV.toUpperCase()}"
                     
-                    // Custom HTML Body Configuration
+                    // Native HTML format blocks
                     String successEmailBody = """
-                        ✅ Jenkins Deployment Successful Notification
-                        --------------------------------------------------
-                        Job: ${env.JOB_NAME}
-                        Build Number: #${env.BUILD_NUMBER}
-                        Branch: ${runBranch}
-                        Target Deployment: ${params.DEPLOY_ENV.toUpperCase()}
-                        Duration: ${currentBuild.durationString}
-                        Console Link: ${env.BUILD_URL}console
-                        
-                        Status: All deployment routines and validations passed seamlessly.
+                        <html>
+                        <body>
+                            <h3 style="color: #28a745;">✅ Jenkins Deployment Successful Notification</h3>
+                            <p><b>Job:</b> ${env.JOB_NAME}</p>
+                            <p><b>Build Number:</b> #${env.BUILD_NUMBER}</p>
+                            <p><b>Branch:</b> ${runBranch}</p>
+                            <p><b>Target Deployment:</b> ${params.DEPLOY_ENV.toUpperCase()}</p>
+                            <p><b>Duration:</b> ${currentBuild.durationString}</p>
+                            <p><b>Console Link:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                        </body>
+                        </html>
                     """
                     
-                    // Route through the working Native Mail engine
                     mail body: successEmailBody,
-                         mimeType: 'text/plain',
+                         mimeType: 'text/html',
                          subject: "DEPL_SUCCESS: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER} OK",
                          to: 'itkrishan21@gmail.com'
                              
@@ -98,14 +110,13 @@ pipeline {
             script {
                 try {
                     def runBranch = env.BRANCH_NAME ?: 'master'
-                    echo "🚨 CRITICAL: Build #${BUILD_NUMBER} Failed. Processing native data alerts..."
+                    echo "🚨 CRITICAL: Build #${BUILD_NUMBER} Failed. Processing inline HTML transmission..."
                     
-                    // Slack Alert
                     slackSend channel: '#jenkins-alerts', 
                               color: 'danger', 
                               message: "🚨 CRITICAL FAILURE: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}] failed!\n• *Branch:* ${runBranch}\n• *Duration:* ${currentBuild.durationString}"
                     
-                    // Extract the final 50 log lines dynamically to satisfy the assignment requirement
+                    // Dynamic terminal log mining to satisfy the assignment constraints
                     def logLines = ""
                     try {
                         logLines = currentBuild.rawBuild.getLog(50).join("\n")
@@ -113,32 +124,32 @@ pipeline {
                         logLines = "Unable to fetch log stream: ${logError.message}"
                     }
                     
-                    // Combine metrics, details, and logs into a single structured body layout
+                    // Structured HTML Body with an isolated scrolling pre-tag box for console output logs
                     String failureEmailBody = """
-                    ❌ Jenkins Build Deployment Failure Notification
-                    --------------------------------------------------
-                    Job: ${env.JOB_NAME}
-                    Build Number: #${env.BUILD_NUMBER}
-                    Branch: ${runBranch}
-                    Target Deployment: ${params.DEPLOY_ENV.toUpperCase()}
-                    Duration: ${currentBuild.durationString}
-                    Console Link: ${env.BUILD_URL}console
-                    
-                    📋 RECENT CONSOLE LOG OUTPUT:
-                    ==================================================
-                    ${logLines}
-                    ==================================================
-                    
-                    Note: Active container rollback actions were executed automatically.
+                        <html>
+                        <body>
+                            <h3 style="color: #dc3545;">❌ Jenkins Build Deployment Failure Notification</h3>
+                            <p><b>Job:</b> ${env.JOB_NAME}</p>
+                            <p><b>Build Number:</b> #${env.BUILD_NUMBER}</p>
+                            <p><b>Branch:</b> ${runBranch}</p>
+                            <p><b>Target Deployment:</b> ${params.DEPLOY_ENV.toUpperCase()}</p>
+                            <p><b>Duration:</b> ${currentBuild.durationString}</p>
+                            <p><b>Console Logs Link:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
+                            
+                            <h4>📋 Recent Console Log Output (Last 50 Lines):</h4>
+                            <pre style="background-color: #f8f9fa; border: 1px solid #dee2e6; padding: 15px; overflow-x: auto; font-family: monospace; color: #333;">${logLines}</pre>
+                            
+                            <p><i>Note: Active container rollback actions were executed automatically.</i></p>
+                        </body>
+                        </html>
                     """
                     
-                    // Fire using the validated working Native Mail engine
                     mail body: failureEmailBody,
-                         mimeType: 'text/plain',
+                         mimeType: 'text/html',
                          subject: "DEPL_ALERT: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER} FAILURE",
                          to: 'itkrishan21@gmail.com'
                          
-                    echo "📨 Native failure notification dispatched to inbox."
+                    echo "📨 Native failure inline HTML mail dispatched."
                              
                 } catch (Exception notifyError) {
                     echo "⚠️ Failure Notification System Encountered an Error: ${notifyError.message}"
@@ -146,3 +157,4 @@ pipeline {
             }
         }
     }
+}
