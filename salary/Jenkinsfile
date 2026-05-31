@@ -55,9 +55,9 @@ pipeline {
                 dir('salary') {
                     catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                         withEnv(["JAVA_HOME=${tool 'Java 21'}", "PATH+MAVEN=${tool '3.8.7'}/bin"]) {
-                            echo "Attempting to generate PDF test reports..."
-                            // FIX: || true lagane se agar pom.xml me plugin support missing bhi hoga, toh bhi step error out nahi karega aur stage perfect Green ho jayegi
-                            sh 'mvn site -DskipTests && mvn pdf:pdf -DskipTests || echo "PDF generation plugin skipped or not supported in pom.xml"'
+                            echo "Generating PDF test reports..."
+                            // STEP 2: Fallback hata kar direct command reset kar diya hai taaki asal report file build ho sake
+                            sh 'mvn site -DskipTests && mvn pdf:pdf -DskipTests'
                         }
                     }
                 }
