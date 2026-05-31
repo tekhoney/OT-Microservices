@@ -39,6 +39,9 @@ pipeline {
                         deployer.validate()
                         deployer.deploy()
                         
+                        // FORCE FAILURE TO RUN DEBUG POST BLOCK ACTIONS
+                        error "Simulated Deployment Timeout"
+                        
                     } catch (Exception e) {
                         echo "⚠️ Deployment Intercepted an Error: ${e.message}"
                         currentBuild.result = 'FAILURE'
@@ -54,78 +57,25 @@ pipeline {
         always {
             script {
                 echo "📊 Build Finished. Duration: ${currentBuild.durationString}. Status: ${currentBuild.currentResult}"
-                
-                def changeLogSets = currentBuild.changeSets
-                if (changeLogSets.size() > 0) {
-                    echo "📋 Build Changes Detected:"
-                    for (int i = 0; i < changeLogSets.size(); i++) {
-                        def entries = changeLogSets[i].items
-                        for (int j = 0; j < entries.length; j++) {
-                            echo "- ${entries[j].msg} by ${entries[j].author.fullName}"
-                        }
-                    }
-                } else {
-                    echo "📋 No new changes detected in this build execution."
-                }
             }
         }
         
         success {
             script {
-                try {
-                    def runBranch = env.BRANCH_NAME ?: 'master'
-                    echo "✅ Processing Success Notifications for branch: ${runBranch}"
-                    
-                    slackSend channel: '#jenkins-alerts', 
-                              color: 'good', 
-                              message: "✅ SUCCESSFUL: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}]\n• *Branch:* ${runBranch}\n• *Duration:* ${currentBuild.durationString}\n• *Environment:* ${params.DEPLOY_ENV.toUpperCase()}"
-                    
-                    String successEmailBody = """
-                        <h3>✅ Jenkins Deployment Successful Notification</h3>
-                        <p><b>Job:</b> ${env.JOB_NAME}</p>
-                        <p><b>Build Number:</b> #${env.BUILD_NUMBER}</p>
-                        <p><b>Branch:</b> ${runBranch}</p>
-                        <p><b>Target Deployment:</b> ${params.DEPLOY_ENV.toUpperCase()}</p>
-                        <p><b>Duration:</b> ${currentBuild.durationString}</p>
-                        <p><b>Console Link:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                        <p><i>Status: All deployment routines passed seamlessly.</i></p>
-                    """
-                    
-                    emailext body: successEmailBody, 
-                             mimeType: 'text/html', 
-                             subject: "DEPL_SUCCESS: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER} OK", 
-                             to: 'itkrishan21@gmail.com',
-                             from: 'itkrishan21@gmail.com',
-                             replyTo: 'itkrishan21@gmail.com',
-                             attachLog: true,
-                             recipientProviders: [[$class: 'DevelopersRecipientProvider'], [$class: 'RequesterRecipientProvider']]
-                             
-                } catch (Exception notifyError) {
-                    echo "⚠️ Success Notification Engine Intercepted an Error: ${notifyError.message}"
-                }
+                echo "✅ Processing Success State Actions."
             }
         }
 
         failure {
             script {
+                echo "🚨 DEBUG ENGINE STARTING: Initiating dual-routing email diagnostics..."
+                
+                // -------------------------------------------------------------
+                // DIAGNOSTIC ROUTE A: EXTENDED EMAIL PLUGIN
+                // -------------------------------------------------------------
                 try {
-                    def runBranch = env.BRANCH_NAME ?: 'master'
-                    echo "🚨 CRITICAL: Build #${BUILD_NUMBER} Failed on branch: ${runBranch}. Dispatching alerts..."
-                    
-                    String failureEmailBody = """
-                        <h3>❌ Jenkins Build Deployment Failure Notification</h3>
-                        <p><b>Job:</b> ${env.JOB_NAME}</p>
-                        <p><b>Build Number:</b> #${env.BUILD_NUMBER}</p>
-                        <p><b>Branch:</b> ${runBranch}</p>
-                        <p><b>Target Deployment:</b> ${params.DEPLOY_ENV.toUpperCase()}</p>
-                        <p><b>Duration:</b> ${currentBuild.durationString}</p>
-                        <p><b>Console Logs Link:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                        <p><i>Note: Active container rollback actions were executed automatically.</i></p>
-                    """
-                    
-                    slackSend channel: '#jenkins-alerts', 
-                              color: 'danger', 
-                              message: "🚨 CRITICAL FAILURE: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}] failed!\n• *Branch:* ${runBranch}\n• *Duration:* ${currentBuild.durationString}"
+                    echo "📨 Attempting Diagnostic Route A (emailext)..."
+                    String failureEmailBody = "<h3>❌ Jenkins Build #${env.BUILD_NUMBER} Failure</h3>"
                     
                     emailext body: failureEmailBody, 
                              mimeType: 'text/html', 
@@ -136,21 +86,42 @@ pipeline {
                              attachLog: true,
                              recipientProviders: [[$class: 'DevelopersRecipientProvider'], [$class: 'RequesterRecipientProvider']]
                              
+                    echo "✔️ Diagnostic Route A (emailext) completed successfully without script exceptions."
                 } catch (Exception notifyError) {
-                    echo "⚠️ Failure Notification System Encountered an Error: ${notifyError.message}"
+                    echo "❌ Diagnostic Route A CRASHED with error: ${notifyError.message}"
+                }
+                
+                // -------------------------------------------------------------
+                // DIAGNOSTIC ROUTE B: NATIVE JENKINS BASIC MAIL (Bypasses Extended Plugin Settings)
+                // -------------------------------------------------------------
+                try {
+                    echo "📨 Attempting Diagnostic Route B (Native basic mail)..."
+                    
+                    mail body: "Your Jenkins job ${env.JOB_NAME} Build #${env.BUILD_NUMBER} failed. Access the pipeline interface to review terminal stacktraces.",
+                         subject: "ALERT: Jenkins Build #${env.BUILD_NUMBER} Failed (Native Step)",
+                         to: 'itkrishan21@gmail.com'
+                         
+                    echo "✔️ Diagnostic Route B (Native basic mail) executed successfully."
+                } catch (Exception nativeError) {
+                    echo "❌ Diagnostic Route B CRASHED with error: ${nativeError.message}"
+                }
+
+                // -------------------------------------------------------------
+                // SLACK DISPATCH ROUTINE
+                // -------------------------------------------------------------
+                try {
+                    slackSend channel: '#jenkins-alerts', 
+                              color: 'danger', 
+                              message: "🚨 CRITICAL FAILURE: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}] failed!"
+                } catch (Exception slackError) {
+                    echo "❌ Slack step crashed with error: ${slackError.message}"
                 }
             }
         }
 
         unstable {
             script {
-                try {
-                    slackSend channel: '#jenkins-alerts', 
-                              color: 'warning', 
-                              message: "⚠️ UNSTABLE: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}] marked as unstable."
-                } catch (Exception notifyError) {
-                    echo "⚠️ Unstable Notification System Encountered an Error: ${notifyError.message}"
-                }
+                echo "⚠️ Build marked as Unstable."
             }
         }
     }
