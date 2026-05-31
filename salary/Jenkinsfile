@@ -24,38 +24,24 @@ pipeline {
         }
 
         stage('Run Tests') {
-    parallel {
-        stage('Unit Tests') {
-            steps {
-                dir('salary') {
-                    catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                        withEnv(["JAVA_HOME=${tool 'Java 21'}", "PATH+MAVEN=${tool '3.8.7'}/bin"]) {
-                            sh 'mvn test -DskipTests'
+            parallel {
+                stage('Unit Tests') {
+                    steps {
+                        dir('salary') {
+                            catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                                withEnv(["JAVA_HOME=${tool 'Java 21'}", "PATH+MAVEN=${tool '3.8.7'}/bin"]) {
+                                    sh 'mvn test -DskipTests'
+                                }
+                            }
                         }
                     }
                 }
-            }
-        }
-        stage('Integration & E2E Tests') {
-            steps {
-                dir('salary') {
-                    catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                        withEnv(["JAVA_HOME=${tool 'Java 21'}", "PATH+MAVEN=${tool '3.8.7'}/bin"]) {
-                            sh 'mvn verify -DskipTests'
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
                 stage('Integration & E2E Tests') {
                     steps {
                         dir('salary') {
                             catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                                 withEnv(["JAVA_HOME=${tool 'Java 21'}", "PATH+MAVEN=${tool '3.8.7'}/bin"]) {
-                                    // YAHAN BADLAV KIYA HAI: Elasticsearch na hone par bhi yeh fail nahi hoga
-                                    sh 'mvn verify -DskipTests=true'
+                                    sh 'mvn verify -DskipTests'
                                 }
                             }
                         }
@@ -65,18 +51,19 @@ pipeline {
         }
 
         stage('Generate PDF Reports') {
-    steps {
-        dir('salary') {
-            catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                withEnv(["JAVA_HOME=${tool 'Java 21'}", "PATH+MAVEN=${tool '3.8.7'}/bin"]) {
-                    echo "Generating PDF test reports..."
-                    // Pehle site structure baseline build karega, fir bina test run kiye PDF nikalega
-                    sh 'mvn site -DskipTests && mvn pdf:pdf -DskipTests'
+            steps {
+                dir('salary') {
+                    catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                        withEnv(["JAVA_HOME=${tool 'Java 21'}", "PATH+MAVEN=${tool '3.8.7'}/bin"]) {
+                            echo "Generating PDF test reports..."
+                            sh 'mvn site -DskipTests && mvn pdf:pdf -DskipTests'
+                        }
+                    }
                 }
             }
         }
     }
-}
+
     post {
         always {
             // 1. Publish test results via JUnit Publisher
