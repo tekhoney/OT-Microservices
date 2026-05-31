@@ -27,8 +27,7 @@ pipeline {
                         deployer.validate()
                         deployer.deploy()
                         
-                        // FORCE A FAILURE HERE TO TEST THE ACTIVE RECREATE ROLLBACK
-                        error "Simulated Deployment Timeout"
+                        
                         
                     } catch (Exception e) {
                         echo "Deployment encountered an error: ${e.message}"
