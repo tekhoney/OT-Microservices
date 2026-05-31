@@ -89,13 +89,16 @@ pipeline {
                         <p><b>Target Deployment:</b> ${params.DEPLOY_ENV.toUpperCase()}</p>
                         <p><b>Duration:</b> ${currentBuild.durationString}</p>
                         <p><b>Console Link:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                        <p><i>Status: All deployment routines and validations passed seamlessly.</i></p>
+                        <p><i>Status: All deployment routines and validations passed seamlessly. The full execution log has been attached.</i></p>
                     """
                     
                     emailext body: successEmailBody, 
                              mimeType: 'text/html', 
                              subject: "DEPL_SUCCESS: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER} OK", 
-                             to: 'itkrishan21@gmail.com'
+                             to: 'itkrishan21@gmail.com',
+                             from: 'itkrishan21@gmail.com',
+                             replyTo: 'itkrishan21@gmail.com',
+                             attachLog: true // ◄ Attaches the full console log text file
                              
                 } catch (Exception notifyError) {
                     echo "⚠️ Success Notification Engine Intercepted an Error: ${notifyError.message}"
@@ -117,7 +120,7 @@ pipeline {
                         <p><b>Target Deployment:</b> ${params.DEPLOY_ENV.toUpperCase()}</p>
                         <p><b>Duration:</b> ${currentBuild.durationString}</p>
                         <p><b>Console Logs Link:</b> <a href="${env.BUILD_URL}console">${env.BUILD_URL}console</a></p>
-                        <p><i>Note: Active container rollback actions were executed automatically. Check host container status.</i></p>
+                        <p><i>Note: Active container rollback actions were executed automatically. Check the attached full console log file for details.</i></p>
                     """
                     
                     slackSend channel: '#jenkins-alerts', 
@@ -127,7 +130,10 @@ pipeline {
                     emailext body: failureEmailBody, 
                              mimeType: 'text/html', 
                              subject: "DEPL_ALERT: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER} FAILURE", 
-                             to: 'itkrishan21@gmail.com'
+                             to: 'itkrishan21@gmail.com',
+                             from: 'itkrishan21@gmail.com',
+                             replyTo: 'itkrishan21@gmail.com',
+                             attachLog: true // ◄ Attaches the full console log text file
                              
                 } catch (Exception notifyError) {
                     echo "⚠️ Failure Notification System Encountered an Error: ${notifyError.message}. Moving forward gracefully."
