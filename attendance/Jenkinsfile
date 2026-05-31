@@ -1,0 +1,42 @@
+@Library('my-shared-library') _
+
+import org.company.DeploymentManager
+
+pipeline {
+    agent any
+    
+    parameters {
+        choice(name: 'DEPLOY_ENV', choices: ['dev', 'staging', 'prod'], description: 'Select target environment')
+    }
+
+    stages {
+        stage('Checkout & Build') {
+            steps {
+                git url: 'https://github.com/tekhoney/OT-Microservices.git', branch: 'master'
+                echo "Building Attendance Microservice Image..."
+                // In a production setup, you would run: sh "docker build -t attendance:latest ."
+            }
+        }
+        
+        stage('Execute Live Actions') {
+            steps {
+                script {
+                    def deployer = new DeploymentManager(this, params.DEPLOY_ENV)
+                    
+                    try {
+                        deployer.validate()
+                        deployer.deploy()
+                        
+                        // FORCE A FAILURE HERE TO TEST THE ACTIVE RECREATE ROLLBACK
+                        error "Simulated Deployment Timeout"
+                        
+                    } catch (Exception e) {
+                        echo "Deployment encountered an error: ${e.message}"
+                        deployer.rollback() // Triggers real Docker command execution!
+                        currentBuild.result = 'FAILURE'
+                    }
+                }
+            }
+        }
+    }
+}
