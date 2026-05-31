@@ -91,12 +91,16 @@ pipeline {
                     """
                     
                     echo "Sending email to opstree dev-ops distribution lists..."
-                    /*
-                    emailext body: emailBody, 
-                            mimeType: 'text/html', 
-                            subject: "DEPL_ALERT: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER} FAILURE", 
-                            to: 'devops-alerts@company.com'
-                    */
+                    echo "Sending email to opstree dev-ops distribution lists..."
+
+// 1. Trigger the live Slack alert step here:
+slackSend channel: '#jenkins-alerts', color: 'danger', message: "🚨 FAILURE: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}] failed. Active rollback strategy executed."
+
+// 2. Make the Email step live by removing the comment slashes:
+emailext body: emailBody, 
+         mimeType: 'text/html', 
+         subject: "DEPL_ALERT: ${env.JOB_NAME} - Build #${env.BUILD_NUMBER} FAILURE", 
+         to: 'itkrishan21@gmail.com' // ◄ Update this to your real email address!
                 } catch (Exception notifyError) {
                     echo "⚠️ Notification System Encountered an Error: ${notifyError.message}. Moving forward gracefully."
                 }
