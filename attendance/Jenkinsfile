@@ -31,9 +31,7 @@ pipeline {
                         
                         // 2. Run Environment-Specific Deployment
                         deployer.deploy()
-                       
-                        // FORCE A FAILURE HERE FOR TESTING PURPOSES
-                error "Simulated Deployment Timeout"  
+                         
                     
                         
                     } catch (Exception e) {
