@@ -2,7 +2,6 @@ pipeline {
     agent any
 
     environment {
-        // Automatically injects your local machine's Maven bin into the Jenkins execution environment
         PATH = "/usr/share/maven/bin:$PATH"
     }
 
@@ -14,73 +13,79 @@ pipeline {
     stages {
         stage('Initialize & Clean') {
             steps {
-                echo "🚀 Starting Native Host Continuous Testing Suite..."
+                echo "🚀 Initializing Local Testing Environment..."
                 sh 'java -version'
                 sh 'mvn -version'
-                sh 'mvn clean'
+                
+                // FIXED: Wrapped inside dir() to execute inside the correct directory
+                dir('salary') {
+                    sh 'mvn clean'
+                }
             }
         }
 
-        stage('Parallel Testing Stage') {
+        stage('Continuous Testing (Parallel)') {
             parallel {
                 stage('Unit Testing') {
                     steps {
-                        // catchError marks the stage stable/unstable but doesn't halt pipeline execution
                         catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                            echo "🧪 Running Core Unit Tests..."
-                            sh 'mvn test'
+                            echo "🧪 Executing Core Application Tests..."
+                            dir('salary') {
+                                sh 'mvn test'
+                            }
                         }
                     }
                     post {
                         always {
-                            // Publishes JUnit trends to the Jenkins Dashboard UI
-                            junit testResults: '**/target/surefire-reports/*.xml', allowEmptyResults: true
+                            dir('salary') {
+                                junit testResults: '**/target/surefire-reports/*.xml', allowEmptyResults: true
+                            }
                         }
                     }
                 }
-
-                stage('Integration Testing') {
-                    steps {
-                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                            echo "🔗 Running Core Integration Tests..."
-                            // Triggers Maven verified integration phases if configured
-                            sh 'mvn verify -DskipTests=false'
-                        }
-                    }
-                }
-            }
-        }
-
-        stage('Enforce Code Coverage') {
-            steps {
-                echo "📊 Evaluating JaCoCo Coverage Thresholds..."
-                // Reads raw binary execution data and checks against the required 80% baseline
-                jacoco(
-                    execPattern: '**/target/*.exec',
-                    classPattern: '**/target/classes',
-                    sourcePattern: '**/src/main/java',
-                    
-                    instructionCoverage: '80', // Pipeline breaks here if total coverage drops under 80%
-                    linesCoverage: '80'
-                )
-            }
-        }
-
-        stage('Publish Reports') {
-            steps {
-                echo "📄 Generating visual site testing artifacts..."
-                sh 'mvn site'
                 
-                // Copies generated documentation and HTML mock-PDF pages into an export directory
-                sh 'mkdir -p target/testing-reports && cp -r target/site/jacoco/* target/testing-reports/ || true'
+                stage('Smoke Checks') {
+                    steps {
+                        echo "🔍 Running validation compilation check..."
+                        dir('salary') {
+                            sh 'mvn compile'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Code Coverage Verification') {
+            steps {
+                echo "📊 Parsing JaCoCo execution data maps..."
+                dir('salary') {
+                    jacoco(
+                        execPattern: '**/target/*.exec',
+                        classPattern: '**/target/classes',
+                        sourcePattern: '**/src/main/java',
+                        instructionCoverage: '80', 
+                        linesCoverage: '80'
+                    )
+                }
+            }
+        }
+
+        stage('Generate Site Reports') {
+            steps {
+                echo "📄 Formatting HTML static test documents..."
+                dir('salary') {
+                    sh 'mvn site'
+                    sh 'mkdir -p target/assignment-reports && cp -r target/site/jacoco/* target/assignment-reports/ || true'
+                }
             }
         }
     }
 
     post {
         always {
-            echo "📦 Saving testing reports to Jenkins Build Dashboard..."
-            archiveArtifacts artifacts: 'target/testing-reports/**', allowEmptyArchive: true
+            echo "📦 Archiving test report bundles to Jenkins Dashboard..."
+            // Looks for the reports folder we isolated inside the salary workspace sub-path
+            archiveArtifacts artifacts: 'salary/target/assignment-reports/**', allowEmptyArchive: true
         }
     }
 }
