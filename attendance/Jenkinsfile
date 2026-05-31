@@ -38,7 +38,8 @@ pipeline {
                     try {
                         deployer.validate()
                         deployer.deploy()
-                        
+                        // FORCE A FAILURE HERE TO TEST THE ACTIVE RECREATE ROLLBACK
+                        error "Simulated Deployment Timeout"
                     } catch (Exception e) {
                         echo "⚠️ Deployment Intercepted an Error: ${e.message}"
                         currentBuild.result = 'FAILURE'
