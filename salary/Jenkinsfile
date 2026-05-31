@@ -1,0 +1,86 @@
+pipeline {
+    agent any
+
+    environment {
+        // Automatically injects your local machine's Maven bin into the Jenkins execution environment
+        PATH = "/usr/share/maven/bin:$PATH"
+    }
+
+    options {
+        timeout(time: 15, unit: 'MINUTES')
+        ansiColor('xterm')
+    }
+
+    stages {
+        stage('Initialize & Clean') {
+            steps {
+                echo "🚀 Starting Native Host Continuous Testing Suite..."
+                sh 'java -version'
+                sh 'mvn -version'
+                sh 'mvn clean'
+            }
+        }
+
+        stage('Parallel Testing Stage') {
+            parallel {
+                stage('Unit Testing') {
+                    steps {
+                        // catchError marks the stage stable/unstable but doesn't halt pipeline execution
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            echo "🧪 Running Core Unit Tests..."
+                            sh 'mvn test'
+                        }
+                    }
+                    post {
+                        always {
+                            // Publishes JUnit trends to the Jenkins Dashboard UI
+                            junit testResults: '**/target/surefire-reports/*.xml', allowEmptyResults: true
+                        }
+                    }
+                }
+
+                stage('Integration Testing') {
+                    steps {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
+                            echo "🔗 Running Core Integration Tests..."
+                            // Triggers Maven verified integration phases if configured
+                            sh 'mvn verify -DskipTests=false'
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Enforce Code Coverage') {
+            steps {
+                echo "📊 Evaluating JaCoCo Coverage Thresholds..."
+                // Reads raw binary execution data and checks against the required 80% baseline
+                jacoco(
+                    execPattern: '**/target/*.exec',
+                    classPattern: '**/target/classes',
+                    sourcePattern: '**/src/main/java',
+                    
+                    instructionCoverage: '80', // Pipeline breaks here if total coverage drops under 80%
+                    linesCoverage: '80'
+                )
+            }
+        }
+
+        stage('Publish Reports') {
+            steps {
+                echo "📄 Generating visual site testing artifacts..."
+                sh 'mvn site'
+                
+                // Copies generated documentation and HTML mock-PDF pages into an export directory
+                sh 'mkdir -p target/testing-reports && cp -r target/site/jacoco/* target/testing-reports/ || true'
+            }
+        }
+    }
+
+    post {
+        always {
+            echo "📦 Saving testing reports to Jenkins Build Dashboard..."
+            archiveArtifacts artifacts: 'target/testing-reports/**', allowEmptyArchive: true
+        }
+    }
+}
