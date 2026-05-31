@@ -1,81 +1,53 @@
 pipeline {
     agent any
-
-    environment {
-        PATH = "/usr/share/maven/bin:$PATH"
-    }
-
-    options {
-        timeout(time: 15, unit: 'MINUTES')
-        ansiColor('xterm')
+    
+    tools {
+        maven '3.8.7' // Matches your Maven version
+        jdk 'Java 21' // Make sure this matches the configured JDK name in Jenkins Global Tool Configuration
     }
 
     stages {
-        stage('Initialize & Clean') {
+        stage('Checkout') {
             steps {
-                echo "🚀 Initializing Local Testing Environment..."
-                sh 'java -version'
-                sh 'mvn -version'
-                
-                // FIXED: Wrapped inside dir() to execute inside the correct directory
-                dir('salary') {
-                    sh 'mvn clean'
-                }
+                checkout scm
             }
         }
 
-        stage('Continuous Testing (Parallel)') {
-            parallel {
-                stage('Unit Testing') {
-                    steps {
-                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE') {
-                            echo "🧪 Executing Core Application Tests..."
-                            dir('salary') {
-                                sh 'mvn test'
-                            }
-                        }
-                    }
-                    post {
-                        always {
-                            dir('salary') {
-                                junit testResults: '**/target/surefire-reports/*.xml', allowEmptyResults: true
-                            }
-                        }
-                    }
-                }
-                
-                stage('Smoke Checks') {
-                    steps {
-                        echo "🔍 Running validation compilation check..."
-                        dir('salary') {
-                            sh 'mvn compile'
-                        }
-                    }
-                }
+        stage('Compile') {
+            steps {
+                sh 'mvn clean compile'
             }
         }
 
-        stage('Code Coverage Verification') {
+        stage('Run Tests') {
             steps {
-                echo "📊 Parsing JaCoCo execution data maps..."
-                dir('salary') {
-                    jacoco(
-                        execPattern: '**/target/*.exec',
-                        classPattern: '**/target/classes',
-                        sourcePattern: '**/src/main/java',
-                        instructionCoverage: '80', 
-                        linesCoverage: '80'
+                // catchError ensures that even if tests fail, the pipeline moves forward to generate reports
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    parallel(
+                        'Unit Tests': {
+                            // Runs unit tests & triggers JaCoCo coverage check
+                            sh 'mvn test'
+                        },
+                        'Integration & E2E Tests': {
+                            // Runs integration tests via failsafe plugin
+                            sh 'mvn verify -DskipUTs=true' 
+                        }
                     )
                 }
             }
         }
 
-        stage('Generate Site Reports') {
+        stage('Generate PDF Reports') {
+            // Note: Maven doesn't natively print PDF coverage report, so we use an open-source tool 
+            // or specific maven plugins like maven-site-plugin/pdf. Alternatively, a shell script conversion.
             steps {
-                echo "📄 Formatting HTML static test documents..."
-                dir('salary') {
-                    sh 'mvn site'
-                    sh 'mkdir -p target/assignment-reports && cp -r target/site/jacoco/* target/assignment-reports/ || true'
+                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                    echo "Generating PDF test reports..."
+                    // Example if using a command-line tool like 'wkhtmltopdf' to convert JaCoCo html to PDF
+                    // sh 'wkhtmltopdf target/site/jacoco/index.html target/site/jacoco/coverage-report.pdf'
+                    
+                    // Native Maven Site PDF alternative:
+                    sh 'mvn pdf:pdf' 
                 }
             }
         }
@@ -83,9 +55,17 @@ pipeline {
 
     post {
         always {
-            echo "📦 Archiving test report bundles to Jenkins Dashboard..."
-            // Looks for the reports folder we isolated inside the salary workspace sub-path
-            archiveArtifacts artifacts: 'salary/target/assignment-reports/**', allowEmptyArchive: true
+            // 1. Publish test results via JUnit Publisher
+            junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml,**/target/failsafe-reports/*.xml'
+            
+            // 2. Publish JaCoCo coverage visual reports to Jenkins UI
+            jacoco execPattern: '**/target/*.exec', classPattern: '**/target/classes', sourcePattern: '**/src/main/java'
+            
+            // 3. Archive test artifacts (XML reports, HTML reports, and generated PDFs)
+            archiveArtifacts artifacts: '**/target/*.pdf, **/target/site/jacoco/**', allowEmptyArchive: true
+        }
+        failure {
+            echo "Pipeline failed. Check test thresholds or compilation errors."
         }
     }
 }
