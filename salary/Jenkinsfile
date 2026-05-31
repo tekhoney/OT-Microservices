@@ -2,8 +2,8 @@ pipeline {
     agent any
     
     tools {
-        maven '3.8.7' // Matches your Maven version
-        jdk 'Java 21' // Make sure this matches the configured JDK name in Jenkins Global Tool Configuration
+        maven '3.8.7' 
+        jdk 'Java 21' 
     }
 
     stages {
@@ -19,34 +19,31 @@ pipeline {
             }
         }
 
+        // To run things in parallel in Declarative, the stage itself contains sub-stages
         stage('Run Tests') {
-            steps {
-                // catchError ensures that even if tests fail, the pipeline moves forward to generate reports
-                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    parallel(
-                        'Unit Tests': {
-                            // Runs unit tests & triggers JaCoCo coverage check
+            parallel {
+                stage('Unit Tests') {
+                    steps {
+                        // catchError is placed inside the specific parallel execution step
+                        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                             sh 'mvn test'
-                        },
-                        'Integration & E2E Tests': {
-                            // Runs integration tests via failsafe plugin
-                            sh 'mvn verify -DskipUTs=true' 
                         }
-                    )
+                    }
+                }
+                stage('Integration & E2E Tests') {
+                    steps {
+                        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                            sh 'mvn verify -DskipUTs=true'
+                        }
+                    }
                 }
             }
         }
 
         stage('Generate PDF Reports') {
-            // Note: Maven doesn't natively print PDF coverage report, so we use an open-source tool 
-            // or specific maven plugins like maven-site-plugin/pdf. Alternatively, a shell script conversion.
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     echo "Generating PDF test reports..."
-                    // Example if using a command-line tool like 'wkhtmltopdf' to convert JaCoCo html to PDF
-                    // sh 'wkhtmltopdf target/site/jacoco/index.html target/site/jacoco/coverage-report.pdf'
-                    
-                    // Native Maven Site PDF alternative:
                     sh 'mvn pdf:pdf' 
                 }
             }
@@ -58,8 +55,11 @@ pipeline {
             // 1. Publish test results via JUnit Publisher
             junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml,**/target/failsafe-reports/*.xml'
             
-            // 2. Publish JaCoCo coverage visual reports to Jenkins UI
-            jacoco execPattern: '**/target/*.exec', classPattern: '**/target/classes', sourcePattern: '**/src/main/java'
+            // 2. Publish JaCoCo coverage using the modern Coverage Plugin
+            recordCoverage(
+                tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']],
+                sourceCodeRetention: 'EVERY_BUILD'
+            )
             
             // 3. Archive test artifacts (XML reports, HTML reports, and generated PDFs)
             archiveArtifacts artifacts: '**/target/*.pdf, **/target/site/jacoco/**', allowEmptyArchive: true
