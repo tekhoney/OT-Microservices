@@ -1,6 +1,12 @@
 pipeline {
     agent any
     
+    environment {
+        // Explicitly defining the Java home path to avoid terminal environment mismatch
+        JAVA_HOME = '/usr/lib/jvm/java-21-openjdk' // Standard path, adjust if your machine uses a different directory
+        PATH      = "${env.JAVA_HOME}/bin:${env.PATH}"
+    }
+    
     tools {
         maven '3.8.7' 
         jdk 'Java 21' 
@@ -15,25 +21,30 @@ pipeline {
 
         stage('Compile') {
             steps {
-                sh 'mvn clean compile'
+                // Navigate into your sub-repository directory before running Maven
+                dir('salary') {
+                    sh 'mvn clean compile'
+                }
             }
         }
 
-        // To run things in parallel in Declarative, the stage itself contains sub-stages
         stage('Run Tests') {
             parallel {
                 stage('Unit Tests') {
                     steps {
-                        // catchError is placed inside the specific parallel execution step
-                        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                            sh 'mvn test'
+                        dir('salary') {
+                            catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                                sh 'mvn test'
+                            }
                         }
                     }
                 }
                 stage('Integration & E2E Tests') {
                     steps {
-                        catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                            sh 'mvn verify -DskipUTs=true'
+                        dir('salary') {
+                            catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                                sh 'mvn verify -DskipUTs=true'
+                            }
                         }
                     }
                 }
@@ -42,9 +53,11 @@ pipeline {
 
         stage('Generate PDF Reports') {
             steps {
-                catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
-                    echo "Generating PDF test reports..."
-                    sh 'mvn pdf:pdf' 
+                dir('salary') {
+                    catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                        echo "Generating PDF test reports..."
+                        sh 'mvn pdf:pdf' 
+                    }
                 }
             }
         }
@@ -52,17 +65,15 @@ pipeline {
 
     post {
         always {
-            // 1. Publish test results via JUnit Publisher
-            junit allowEmptyResults: true, testResults: '**/target/surefire-reports/*.xml,**/target/failsafe-reports/*.xml'
+            // Updated paths to look inside the 'salary' directory for reports
+            junit allowEmptyResults: true, testResults: 'salary/target/surefire-reports/*.xml,salary/target/failsafe-reports/*.xml'
             
-            // 2. Publish JaCoCo coverage using the modern Coverage Plugin
             recordCoverage(
-                tools: [[parser: 'JACOCO', pattern: '**/target/site/jacoco/jacoco.xml']],
+                tools: [[parser: 'JACOCO', pattern: 'salary/target/site/jacoco/jacoco.xml']],
                 sourceCodeRetention: 'EVERY_BUILD'
             )
             
-            // 3. Archive test artifacts (XML reports, HTML reports, and generated PDFs)
-            archiveArtifacts artifacts: '**/target/*.pdf, **/target/site/jacoco/**', allowEmptyArchive: true
+            archiveArtifacts artifacts: 'salary/target/*.pdf, salary/target/site/jacoco/**', allowEmptyArchive: true
         }
         failure {
             echo "Pipeline failed. Check test thresholds or compilation errors."
