@@ -19,7 +19,7 @@ pipeline {
             steps {
                 script {
                     // Send an initial notification to tracking systems
-                    echo "🔔 Notification: Build #${BUILD_NUMBER} Started for branch ${BRANCH_NAME ?: 'master'}"
+                    echo "🔔 Notification: Build #${BUILD_NUMBER} Started for branch ${env.BRANCH_NAME ?: 'master'}"
                     // Slack call placeholder: slackSend(channel: '#deployments', color: '#FFFF00', message: "STARTED: Job '${env.JOB_NAME}' [Build #${env.BUILD_NUMBER}]")
                 }
             }
